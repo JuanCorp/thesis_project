@@ -1,0 +1,52 @@
+- Preprocess larger dataset
+- TF-IDF (Align Spanish-English)
+- Investigate Cross Lingual Alignment (Beta parameter)
+- Get Ideas from Old papers
+- K-Means  
+- Goal: Get good topics with Pretrained embeddings  + Clustering 
+
+ 
+
+ 2023-12-20
+
+ temp_cb_bert = Tired of Topic Models paper (done, same as the encoding im doing now basically)
+ TF-IDF experiment with parameters (done , dataset grew too large)
+ Check Tired of Topic models Repo (done)
+ Do Report on Jupyter  (done)
+ 0.8 or greater diversity (aim for that)
+ Compare datasets (average document length, dataset size, vocab size)  (done)
+ 
+
+ 2024-01-10
+
+
+- Use another pretrained embedding model (larger one) (done)
+- Compare with Cross Lingual Contextualized Topic Models
+- Compare LDA  (Slower, Need both languages during training)
+- TF-IDF for determining top tokens (Tired of Topic Models) (done)
+- Upload Repo on Github (done)
+
+ 
+ 
+
+2024-01-24
+
+- Train separate LDAs (done)
+- DTM model (won't run)
+- Contextualized Topic Model 
+- LDA, CTM, My Model, table comparison (Coherence, diversity, CLA)
+- https://github.com/MilaNLProc/contextualized-topic-models
+
+
+2024 -02-07
+
+- Measure times
+- DTM reduce vocab size for scientific dataset
+- Performance (Complexity,CPU, RAM, GPU) 
+- Semantic Similarity Topic (Show how CLA works)
+
+
+2024-02-23
+
+- CTM used only entities that are filtered after preprocessing
+- 

@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --gres=gpu:V100:1
+#SBATCH --mem=65536
+#SBATCH -J TestJob
+#SBATCH -N 1
+#SBATCH -o TestJob-%j.out
+#SBATCH -e TestJob-%j.err
+#SBATCH -t 200:00:00
+#SBATCH --mail-type=END
+
+echo "Executing on $HOSTNAME"
+
+python main.py
+
+sleep 5
