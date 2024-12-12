@@ -10,7 +10,7 @@ class DataReader(object):
 
     def _read_data(self):
         full_filepath = self.filepath + self.filename
-        self.data= pd.read_csv(full_filepath)
+        self.data= pd.read_csv(full_filepath).head(1000)
     
     def _select_text_features(self):
         text = self.data[self.usecols[0]]

@@ -24,6 +24,8 @@ class TextPreparation(object):
         self._get_stopwords()
         lower_text = text.str.lower()
         no_accents = lower_text.apply(unidecode)
+        #alpha_text =  no_accents.str.replace(r"^[\.a-zA-Z0-9,!? ]*$", "")
+        #nostops = alpha_text.apply(lambda x: " ".join([word for word in x.split() if word not in self.stopwords and (len(word) > 2 )]))#or word == "." or word == " .")]))
         alpha_text =  no_accents.str.replace(r"(@\[a-z]+)|([^a-z \t])|(\w+:\/\/\S+)|^rt|http.+?", "")
         nostops = alpha_text.apply(lambda x: " ".join([word for word in x.split() if word not in self.stopwords and len(word) > 2]))
         return nostops
@@ -54,7 +56,7 @@ class TextPreparation(object):
         return text.loc[indexes_keep]
     
     
-    def prepare_text(self,pipeline=["clean","lemmatize","filter","keep"]):
+    def prepare_text(self,pipeline=["clean","filter","keep"]):
         functions = {"clean":self._clean_text,"filter":self._filter_words,"lemmatize":self._lemmatize_words,"keep":self._indexes_to_keep}
         text = self.text_series
         for step in pipeline:

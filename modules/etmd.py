@@ -47,37 +47,32 @@ class DVAE(pl.LightningModule):
     def __init__(self,
                  embedding_size,
                  topic_size,
-                 mean,
-                 std,
                  beta=2.0):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.topic_size = topic_size
-        self.mean = mean
-        self.std = std
         self.beta = beta
 
         # encoder
         self.encoder = nn.Sequential(
             nn.Linear(in_features=self.embedding_size, out_features=100),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
+            nn.Softplus(),
+            nn.Dropout(p=0.2),
+            nn.Linear(in_features=100, out_features=100),
+            nn.Softplus(),
+            nn.Dropout(p=0.2),
 
             nn.Linear(in_features=100, out_features=self.topic_size),
         )
+        #CTM data set+
+        #LayerNorm
         self.encoder_norm = nn.BatchNorm1d(num_features=self.topic_size, eps=0.001, momentum=0.001, affine=True)
         self.encoder_norm.weight.data.copy_(torch.ones(self.topic_size))
         self.encoder_norm.weight.requires_grad = False
 
         # decoder
-        self.decoder = nn.Sequential(
-            nn.Linear(in_features=self.topic_size, out_features=100),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-
-            nn.Linear(in_features=100, out_features=self.embedding_size)
-        )
+        self.decoder = nn.Linear(in_features=self.topic_size,out_features=self.embedding_size)
         self.decoder_norm = nn.BatchNorm1d(num_features=self.embedding_size, eps=0.001, momentum=0.001, affine=True)
         self.decoder_norm.weight.data.copy_(torch.ones(self.embedding_size))
         self.decoder_norm.weight.requires_grad = False
@@ -87,9 +82,10 @@ class DVAE(pl.LightningModule):
 
     def forward(self, x):
         alpha = F.softplus(self.encoder_norm(self.encoder(x)))
-        alpha = torch.max(torch.tensor(0.00001, device=x.device), alpha)
+
+        alpha = torch.max(torch.tensor(0.00001, device=alpha.device), alpha)
         z = rsvi(alpha)
-        x_recon = self.decoder_norm(self.decoder(z))
+        x_recon = F.sigmoid(self.decoder_norm(self.decoder(z)))
         return x_recon, alpha
 
     def training_step(self, batch, batch_idx):
@@ -134,7 +130,9 @@ class DVAE(pl.LightningModule):
         return self.beta * torch.distributions.kl.kl_divergence(posterior, prior)
 
     def objective(self, x, x_recon, alpha):
-        recon = -torch.sum(x * (x_recon *self.std + self.mean), dim=1).mean()
+        recon = -torch.sum(x * x_recon, dim=1).mean()
+        criterion = nn.MSELoss(reduction='mean')
+        recon = criterion(x,x_recon)
         kl = self.kl_divergence(alpha).mean()
         return recon, kl
     

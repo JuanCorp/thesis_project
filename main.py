@@ -3,19 +3,20 @@ from modules.data_saver import DataSaver
 from modules.text_prep import TextPreparation
 from modules.text_embeddings import TextEmbeddingGenerator
 from modules.bow_embeddings import generate_normalized_bow
-from modules.topic_model import TopicModel
 from modules.evaluation import Evaluation
 from modules.etmd import DVAE
+#from modules.gaussian_vae import DVAE
+#from modules.dir_vae import DVAE
 import time
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint,EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies.ddp import DDPStrategy
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 import pandas as pd
 from sklearn.model_selection import train_test_split
-
+import numpy as np
 
 CONSTANTS = {
     "dataset":"scientific_papers",
@@ -48,28 +49,27 @@ def run_experiment():
     teg.unload_transformer()
     del teg
     print(embeddings)
+    print(embeddings.std())
     print("Generating Topics")
-    
+    embeddings = (embeddings-np.min(embeddings))/(np.max(embeddings)-np.min(embeddings))
+    #embeddings = (embeddings / embeddings.sum(1,keepdims=True))
+    print(embeddings)
     big_train,test = train_test_split(embeddings,test_size=0.2,random_state=777)
     train,val = train_test_split(big_train,test_size=0.1,random_state=777)
     train_emb = torch.from_numpy(train).float()
     test_emb = torch.from_numpy(test).float()
     val_emb = torch.from_numpy(val).float()
-    mean, std = train_emb.mean(dim=0), train_emb.std(dim=0)
-    train_emb_normalized = (train_emb - mean) / std
-    val_emb_normalized =  (val_emb - mean) / std
-    train_dataloader = DataLoader(train_emb_normalized,batch_size=128, shuffle=True)
-    val_dataloader = DataLoader(val_emb_normalized,batch_size=128, shuffle=True)
-    model = DVAE(embedding_size=embeddings.shape[1], topic_size=20,mean=mean,std=std)
+    #mean, std = train_emb.mean(dim=0).to('cuda'), train_emb.std(dim=0)
+    #train_emb_normalized = ((train_emb - mean) / std)
+    #val_emb_normalized =  ((val_emb - mean) / std)
+    train_dataloader = DataLoader(train_emb,batch_size=64, shuffle=True)
+    val_dataloader = DataLoader(val_emb,batch_size=64, shuffle=True)
+    model = DVAE(embedding_size=embeddings.shape[1], topic_size=20)
     # train
-    trainer = Trainer(max_epochs=50,
-                      accelerator='auto',
-                      devices=-1,
-                      default_root_dir='output/')
+    early_stopping = EarlyStopping(monitor="val/loss")
+    trainer = Trainer(max_epochs=200,
+                      accelerator="auto", devices="auto", strategy="auto",callbacks=[early_stopping])
     trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
-
-   
-    print(train_emb)
     print(model(train_emb))
     topics = model.predict(train_emb)
     end = time.time()

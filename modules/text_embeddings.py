@@ -11,7 +11,7 @@ class TextEmbeddingGenerator(object):
         nltk.download('punkt')
 
     def _load_transformer(self):
-        self.transformer = SentenceTransformer(self.model)
+        self.transformer = SentenceTransformer(self.model,device='cuda:0')
 
     def unload_transformer(self):
         del self.transformer
