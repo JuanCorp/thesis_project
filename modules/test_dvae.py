@@ -31,11 +31,11 @@ class Decoder(nn.Module):
 
 
 class DVAE(pl.LightningModule):
-    def __init__(self, embedding_size, topic_size, learning_rate=1e-3):
+    def __init__(self,input_size, embedding_size, topic_size, learning_rate=1e-3):
         super().__init__()
         self.save_hyperparameters()
         self.encoder = Encoder(embedding_size, topic_size)
-        self.decoder = Decoder(topic_size, embedding_size)
+        self.decoder = Decoder(topic_size, input_size)
         self.latent_dim = topic_size
         self.learning_rate = learning_rate
 
@@ -52,26 +52,31 @@ class DVAE(pl.LightningModule):
 
     def objective(self, x, reconstruction, alpha, dist):
         """Calculate the VAE loss: Reconstruction + KL divergence."""
-        # Reconstruction loss (Binary Cross Entropy)
-        recon_loss = F.binary_cross_entropy(reconstruction, x, reduction='sum')
+        recon_loss = -torch.sum(x * torch.log(reconstruction + 1e-10), dim=1)
 
         # KL divergence between Dirichlet and a uniform Dirichlet prior
-        prior = Dirichlet(torch.ones_like(alpha))
+        prior = Dirichlet(torch.ones_like(alpha) * 0.02)
         kl_loss = kl_divergence(dist, prior).sum()
 
         return recon_loss + kl_loss
 
     def training_step(self, batch, batch_idx):
-        x = batch
-        reconstruction, alpha, z, dist = self.forward(x)
-        loss = self.objective(x, reconstruction, alpha, dist)
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
+        X_contextual = batch["X_contextual"]
+        reconstruction, alpha, z, dist = self.forward(X_contextual)
+        loss = self.objective(X_bow, reconstruction, alpha, dist)
+        loss = loss.sum()
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x = batch
-        reconstruction, alpha, z, dist = self.forward(x)
-        loss = self.objective(x, reconstruction, alpha, dist)
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
+        X_contextual = batch["X_contextual"]
+        reconstruction, alpha, z, dist = self.forward(X_contextual)
+        loss = self.objective(X_bow, reconstruction, alpha, dist)
+        loss = loss.sum()
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):

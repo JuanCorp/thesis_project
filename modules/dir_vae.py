@@ -21,11 +21,12 @@ def prior(K, alpha):
 
 class DVAE(pl.LightningModule):
     def __init__(self,
+                 input_size,
                  embedding_size,
                  topic_size,
                  beta=2.0):
         super().__init__()
-
+        self.input_size = input_size
         self.embedding_size = embedding_size
         self.topic_size = topic_size
         self.beta = beta
@@ -48,9 +49,9 @@ class DVAE(pl.LightningModule):
         
 
         # decoder
-        self.decoder = nn.Linear(in_features=self.topic_size,out_features=self.embedding_size)
-        self.decoder_norm = nn.BatchNorm1d(num_features=self.embedding_size, eps=0.001, momentum=0.001, affine=True)
-        self.decoder_norm.weight.data.copy_(torch.ones(self.embedding_size))
+        self.decoder = nn.Linear(in_features=self.topic_size,out_features=self.input_size)
+        self.decoder_norm = nn.BatchNorm1d(num_features=self.input_size, eps=0.001, momentum=0.001, affine=True)
+        self.decoder_norm.weight.data.copy_(torch.ones(self.input_size))
         self.decoder_norm.weight.requires_grad = False
 
 
@@ -70,7 +71,7 @@ class DVAE(pl.LightningModule):
 
     def decode(self,gauss_z):
         dir_z = F.softmax(gauss_z,dim=1)
-        return F.sigmoid(self.decoder_norm(self.decoder(dir_z)))
+        return F.log_softmax(self.decoder_norm(self.decoder(dir_z)))
     
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)

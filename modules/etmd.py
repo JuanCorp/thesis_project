@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Dirichlet
 import pytorch_lightning as pl
+from torch.utils.data import TensorDataset, DataLoader
+import numpy as np
 
 def calc_epsilon(p, alpha):
     sqrt_alpha = torch.sqrt(9 * alpha - 3)
@@ -45,13 +47,15 @@ def rsvi(alpha):
 
 class DVAE(pl.LightningModule):
     def __init__(self,
+                 input_size,
                  embedding_size,
                  topic_size,
-                 beta=2.0):
+                 beta=1.0):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.topic_size = topic_size
+        self.input_size = input_size
         self.beta = beta
 
         # encoder
@@ -67,35 +71,33 @@ class DVAE(pl.LightningModule):
         )
         #CTM data set+
         #LayerNorm
-        self.encoder_norm = nn.BatchNorm1d(num_features=self.topic_size, eps=0.001, momentum=0.001, affine=True)
-        self.encoder_norm.weight.data.copy_(torch.ones(self.topic_size))
-        self.encoder_norm.weight.requires_grad = False
+        self.encoder_norm = nn.BatchNorm1d(num_features=self.topic_size, affine=False)
 
         # decoder
-        self.decoder = nn.Linear(in_features=self.topic_size,out_features=self.embedding_size)
-        self.decoder_norm = nn.BatchNorm1d(num_features=self.embedding_size, eps=0.001, momentum=0.001, affine=True)
-        self.decoder_norm.weight.data.copy_(torch.ones(self.embedding_size))
-        self.decoder_norm.weight.requires_grad = False
+        self.decoder = nn.Linear(in_features=self.topic_size, out_features=self.input_size)
+        self.decoder_norm = nn.BatchNorm1d(num_features=self.input_size, affine=False)
 
         # save hyperparameters
         self.save_hyperparameters()
 
     def forward(self, x):
         alpha = F.softplus(self.encoder_norm(self.encoder(x)))
-
         alpha = torch.max(torch.tensor(0.00001, device=alpha.device), alpha)
         z = rsvi(alpha)
-        x_recon = F.sigmoid(self.decoder_norm(self.decoder(z)))
+        x_recon = F.softmax(self.decoder_norm(self.decoder(z)), dim=1)
         return x_recon, alpha
 
     def training_step(self, batch, batch_idx):
-        x = batch
+        x = batch['X_contextual']
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
         x_recon, alpha = self(x)
-        recon, kl = self.objective(x, x_recon, alpha)
+        recon, kl = self.objective(X_bow, x_recon, alpha)
         loss = recon + kl
+        loss = loss.sum()
         self.log_dict({'train/loss': loss,
-                       'train/recon': recon,
-                       'train/kl': kl},
+                       'train/recon': recon.sum(),
+                       'train/kl': kl.sum()},
                       prog_bar=True,
                       logger=True,
                       on_step=False,
@@ -104,13 +106,16 @@ class DVAE(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x = batch
+        x = batch['X_contextual']
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
         x_recon, alpha = self(x)
-        recon, kl = self.objective(x, x_recon, alpha)
+        recon, kl = self.objective(X_bow, x_recon, alpha)
         loss = recon + kl
+        loss = loss.sum()
         self.log_dict({'val/loss': loss,
-                       'val/recon': recon,
-                       'val/kl': kl},
+                       'val/recon': recon.sum(),
+                       'val/kl': kl.sum()},
                       prog_bar=True,
                       logger=True,
                       on_step=False,
@@ -130,17 +135,44 @@ class DVAE(pl.LightningModule):
         return self.beta * torch.distributions.kl.kl_divergence(posterior, prior)
 
     def objective(self, x, x_recon, alpha):
-        recon = -torch.sum(x * x_recon, dim=1).mean()
-        criterion = nn.MSELoss(reduction='mean')
-        recon = criterion(x,x_recon)
-        kl = self.kl_divergence(alpha).mean()
+        recon = -torch.sum(x * torch.log(x_recon + 1e-10), dim=1)
+        print(recon.shape)
+        print(recon)
+        #criterion = nn.MSELoss(reduction='mean')
+        #recon = criterion(x,x_recon)
+        kl = self.kl_divergence(alpha)
         return recon, kl
-    
+
+    def get_doc_topic_distribution(self, dataset, n_samples=20):
+        """
+        Get the document-topic distribution for a dataset of topics. Includes multiple sampling to reduce variation via
+        the parameter n_sample.
+
+        :param dataset: a PyTorch Dataset containing the documents
+        :param n_samples: the number of sample to collect to estimate the final distribution (the more the better).
+        """
+        self.eval()
+
+        loader = DataLoader(
+            dataset,
+            batch_size=64,
+            shuffle=False
+        )
+        final_thetas = []
+        with torch.no_grad():
+            for batch_samples in loader:
+                # batch_size x vocab_size
+                X_contextual = batch_samples["X_contextual"]
+                X_contextual = X_contextual
+                self.zero_grad()
+                alpha = F.softplus(self.encoder_norm(self.encoder(X_contextual)))
+                alpha = torch.max(torch.tensor(0.00001, device=alpha.device), alpha)
+                thetas = rsvi(alpha).cpu().numpy()
+                final_thetas.append(thetas)
+        return np.concatenate(final_thetas, axis=0)
 
     def predict(self,x):
-        alpha = F.softplus(self.encoder_norm(self.encoder(x)))
-        alpha = torch.max(torch.tensor(0.00001, device=x.device), alpha)
-        z = rsvi(alpha)
-        keep = torch.argmax(z,dim=1)
-        assigned_topics = [[a] for a in keep]
-        return assigned_topics
+        doc_topic_distribution = self.get_doc_topic_distribution(x)
+        print(doc_topic_distribution)
+        topics = [np.where(p > 0.1) if len(np.where(p > 0.1)[0]) > 0 else np.where(p>=0.01) for p in doc_topic_distribution]
+        return topics

@@ -2,7 +2,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import normalize
 import numpy as np
 
-def generate_normalized_bow(texts):
+def generate_bow(texts):
     """
     Generates a normalized bag-of-words representation from an array of texts.
 
@@ -18,8 +18,8 @@ def generate_normalized_bow(texts):
     # Fit and transform the input texts
     bow_matrix = vectorizer.fit_transform(texts)
     # Normalize the matrix
-    normalized_bow = normalize(bow_matrix, norm='l2', axis=1)
     # Get the feature names
     feature_names = vectorizer.get_feature_names_out()
-    print(normalized_bow)
-    return normalized_bow.toarray()
+    vocab = vectorizer.get_feature_names_out()
+    id2token = {k: v for k, v in zip(range(0, len(vocab)), vocab)}
+    return bow_matrix.toarray(),id2token

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.distributions import Dirichlet
 import pytorch_lightning as pl
 from torch.utils.data import TensorDataset, DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 
 def reparameterize(mu, logvar):
@@ -15,11 +16,13 @@ def reparameterize(mu, logvar):
 
 class DVAE(pl.LightningModule):
     def __init__(self,
+                 input_size,
                  embedding_size,
                  topic_size,
                  beta=2.0):
         super().__init__()
 
+        self.input_size = input_size
         self.embedding_size = embedding_size
         self.topic_size = topic_size
         self.beta = beta
@@ -28,10 +31,9 @@ class DVAE(pl.LightningModule):
         self.encoder = nn.Sequential(
             nn.Linear(in_features=self.embedding_size, out_features=100),
             nn.Softplus(),
-            nn.Dropout(p=0.1),
             nn.Linear(in_features=100, out_features=100),
             nn.Softplus(),
-            nn.Dropout(p=0.1),
+            nn.Dropout(p=0.2)
         )
         self.f_mu = nn.Linear(100,self.topic_size)
         self.f_mu_batchnorm = nn.BatchNorm1d(self.topic_size, affine=False)
@@ -39,15 +41,19 @@ class DVAE(pl.LightningModule):
         self.f_sigma = nn.Linear(100, self.topic_size)
         self.f_sigma_batchnorm = nn.BatchNorm1d(self.topic_size, affine=False)
 
-        self.prior_mean = nn.Parameter(torch.zeros(self.topic_size))
+        topic_prior_mean = 0.0
+        self.prior_mean = torch.tensor([topic_prior_mean] * self.topic_size).cuda()
+        self.prior_mean = nn.Parameter(self.prior_mean)
         topic_prior_variance = 1.0 - (1.0/self.topic_size)
-        self.prior_variance = nn.Parameter(torch.tensor([topic_prior_variance] * self.topic_size))
-        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.embedding_size))
+        self.prior_variance = torch.tensor([topic_prior_variance] * self.topic_size).cuda()
+        self.prior_variance = nn.Parameter(self.prior_variance)
+        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.input_size))
         nn.init.xavier_uniform_(self.beta)
 
         # decoder
         
-        self.decoder_norm = nn.BatchNorm1d(num_features=self.embedding_size, affine=False)
+        self.decoder_norm = nn.BatchNorm1d(num_features=self.input_size, affine=False)
+        self.drop_theta = nn.Dropout(0.2)
 
         # save hyperparameters
         self.save_hyperparameters()
@@ -58,6 +64,7 @@ class DVAE(pl.LightningModule):
         posterior_log_sigma = self.f_sigma_batchnorm(self.f_sigma(x))
         posterior_sigma = torch.exp(posterior_log_sigma)
         theta = F.softmax(reparameterize(posterior_mu, posterior_log_sigma), dim=1)
+        theta = self.drop_theta(theta)
         word_dist = F.softmax(
                 self.decoder_norm(torch.matmul(theta, self.beta)), dim=1
         )
@@ -98,13 +105,16 @@ class DVAE(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
-        x = batch
-        prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist = self(x)
-        kl, recon = self.objective(x,prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist)
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
+        X_contextual = batch["X_contextual"]
+        prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist = self(X_contextual)
+        kl, recon = self.objective(X_bow,prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist)
         loss = recon + kl
+        loss = loss.sum()
         self.log_dict({'train/loss': loss,
-                       'train/recon': recon,
-                       'train/kl': kl},
+                       'train/recon': recon.sum(),
+                       'train/kl': kl.sum()},
                       prog_bar=True,
                       logger=True,
                       on_step=False,
@@ -113,13 +123,16 @@ class DVAE(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x = batch
-        prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist = self(x)
-        kl, recon = self.objective(x,prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist)
+        X_bow = batch["X_bow"]
+        X_bow = X_bow.reshape(X_bow.shape[0], -1)
+        X_contextual = batch["X_contextual"]
+        prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist = self(X_contextual)
+        kl, recon = self.objective(X_bow,prior_mean,prior_variance,posterior_mu,posterior_sigma,posterior_log_sigma,word_dist)
         loss = recon + kl
+        loss = loss.sum()
         self.log_dict({'val/loss': loss,
-                       'val/recon': recon,
-                       'val/kl': kl},
+                       'val/recon': recon.sum(),
+                       'val/kl': kl.sum()},
                       prog_bar=True,
                       logger=True,
                       on_step=False,
@@ -128,7 +141,7 @@ class DVAE(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=2e-3,betas=(0.99,0.99))
         return optimizer
     
 
@@ -157,10 +170,10 @@ class DVAE(pl.LightningModule):
         KL = 0.5 * (var_division + diff_term - self.topic_size + logvar_det_division)
 
         # Reconstruction term
-        RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1).mean()
+        RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1)
 
         # loss = self.weights["beta"]*KL + RL
-        return KL.mean(), RL.mean()
+        return KL, RL
     
 
     def sample(self, posterior_mu, posterior_log_sigma, n_samples: int = 20):
@@ -195,7 +208,7 @@ class DVAE(pl.LightningModule):
         with torch.no_grad():
             for batch_samples in loader:
                 # batch_size x vocab_size
-                X_contextual = batch_samples
+                X_contextual = batch_samples['X_contextual']
 
                 # forward pass
                 self.zero_grad()
@@ -215,6 +228,5 @@ class DVAE(pl.LightningModule):
     def predict(self,dataset):
         doc_topic_distribution = self.get_doc_topic_distribution(dataset)
         print(doc_topic_distribution)
-        predictions = self.get_most_likely_topic(doc_topic_distribution)
-        predictions =[[[p]] for p in predictions]
-        return predictions
+        topics = [np.where(p > 0.1) if len(np.where(p > 0.1)[0]) > 0 else np.where(p>=0.1) for p in doc_topic_distribution]
+        return topics

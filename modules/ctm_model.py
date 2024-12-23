@@ -13,7 +13,7 @@ class TopicModel(object):
     def _fit_model(self,text_for_contextual,text_for_bow):
         qt = TopicModelDataPreparation(self.bert_version)
         training_dataset = qt.fit(text_for_contextual=text_for_contextual, text_for_bow=text_for_bow)
-        ctm = ZeroShotTM(bow_size=len(qt.vocab), contextual_size=384, n_components=self.n_topics,num_data_loader_workers=1,hidden_sizes=(100, 100),num_epochs=200)
+        ctm = ZeroShotTM(bow_size=len(qt.vocab), contextual_size=384, n_components=self.n_topics,num_data_loader_workers=1,hidden_sizes=(100, 100),num_epochs=20)
         ctm.fit(training_dataset)
         self.qt = qt
         self.model = ctm

@@ -34,5 +34,19 @@ class TextEmbeddingGenerator(object):
         return embeddings
     
 
+
+    def bert_embeddings_from_list(
+        self,texts, sbert_model_to_load, batch_size=200, max_seq_length=None
+    ):
+
+        model = SentenceTransformer(sbert_model_to_load)
+
+        if max_seq_length is not None:
+            model.max_seq_length = max_seq_length
+
+
+        return np.array(model.encode(texts, show_progress_bar=True, batch_size=batch_size))
+        
+
         
         

@@ -41,10 +41,8 @@ class TextPreparation(object):
         cv = CountVectorizer(min_df=self.cv_params["min_df"],max_df=self.cv_params["max_df"])
         #cv = CountVectorizer(max_features=1000)
         cv.fit(text)
-        print(len(cv.vocabulary_))
 
         filtered_text = text.apply(lambda x: " ".join([word for word in x.split() if word in cv.vocabulary_]))
-        print((text.str.len() == 0).sum())
         filled_text = filtered_text.apply(lambda x: filtered_text.values[0] if x == "" else x)
         self.vocab_size=len(cv.vocabulary_)
         return filled_text
