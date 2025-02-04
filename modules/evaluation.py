@@ -211,6 +211,24 @@ class Evaluation(object):
 
         return stats
 
+
+    def plot_kl_divergence(self,teacher_posterior,student_posterior):
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+
+        # Flatten matrices into 1D arrays
+        P_flat = teacher_posterior.flatten().cpu().numpy()
+        Q_flat = student_posterior.flatten().cpu().numpy()
+
+        # Plot KDE distributions
+        plt.figure(figsize=(7, 5))
+        sns.kdeplot(P_flat, fill=True, label="Teacher Density", color='blue')
+        sns.kdeplot(Q_flat, fill=True, label="Student Density", color='red')
+        plt.legend()
+        plt.title("Kernel Density Estimation of Matrix Values")
+        plt.xlabel("Value")
+        plt.ylabel("Density")
+        plt.savefig('KL_Divergence.png')
     
 
     

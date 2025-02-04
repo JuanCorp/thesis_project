@@ -7,7 +7,8 @@ from unidecode import unidecode
 import numpy as np
 
 class TextPreparation(object):
-    def __init__(self,text_series,cv_params={"min_df":0.01,"max_df":0.5},language="english"):
+    #0.001, 0.95
+    def __init__(self,text_series,cv_params={"min_df":0.005,"max_df":0.15},language="english"):
         self.text_series = text_series
         self.cv_params = cv_params
         self.language=language
@@ -39,7 +40,7 @@ class TextPreparation(object):
     
     def _filter_words(self,text):
         cv = CountVectorizer(min_df=self.cv_params["min_df"],max_df=self.cv_params["max_df"])
-        #cv = CountVectorizer(max_features=1000)
+        #cv = CountVectorizer(max_features=10000)
         cv.fit(text)
 
         filtered_text = text.apply(lambda x: " ".join([word for word in x.split() if word in cv.vocabulary_]))
@@ -54,7 +55,7 @@ class TextPreparation(object):
         return text.loc[indexes_keep]
     
     
-    def prepare_text(self,pipeline=["clean","filter","keep"]):
+    def prepare_text(self,pipeline=["clean","lemmatize","filter","keep"]):
         functions = {"clean":self._clean_text,"filter":self._filter_words,"lemmatize":self._lemmatize_words,"keep":self._indexes_to_keep}
         text = self.text_series
         for step in pipeline:

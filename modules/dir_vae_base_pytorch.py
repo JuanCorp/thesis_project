@@ -38,6 +38,7 @@ class Dirichlet_VAE(nn.Module):
         self.encoder = nn.Sequential(
             nn.Linear(in_features=self.embedding_size, out_features=100),
             nn.Softplus(),
+            nn.Dropout(p=0.2),
             nn.Linear(in_features=100, out_features=100),
             nn.Softplus(),
             nn.Dropout(p=0.2),
@@ -55,7 +56,7 @@ class Dirichlet_VAE(nn.Module):
         self.decoder_norm = nn.BatchNorm1d(num_features=self.input_size, affine=False)
         self.drop_theta = nn.Dropout(0.2)
 
-        alpha_prior = nn.Parameter(prior(self.topic_size,0.3))
+        alpha_prior = nn.Parameter(prior(self.topic_size,0.002))
         self.alpha_prior = alpha_prior
         
         # save hyperparameters

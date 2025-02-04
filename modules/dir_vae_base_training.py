@@ -25,10 +25,12 @@ class DIR_VAE:
         dropout=0.2,
         learn_priors=True,
         batch_size=64,
-        lr=2e-3,
+        lr=2e-2,
         momentum=0.99,
         solver="adam",
-        num_epochs=20,
+        num_epochs=50,
+        beta=1,
+        prior=None
     ):
 
         self.device = (
@@ -47,7 +49,8 @@ class DIR_VAE:
         self.solver = solver
         self.num_epochs = num_epochs
         self.training_doc_topic_distributions = None
-        self.beta = 1
+        self.beta = beta
+        self.prior=prior
 
         self.model = Dirichlet_VAE(
             bow_size,
@@ -90,7 +93,7 @@ class DIR_VAE:
     ):
         prior = Dirichlet(prior_alpha)
         posterior = Dirichlet(posterior_alpha)
-        KL = self.beta * torch.distributions.kl.kl_divergence(posterior, prior)
+        KL = torch.distributions.kl.kl_divergence(posterior, prior)
         # Reconstruction term
         RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1)
         # loss = self.weights["beta"]*KL + RL
@@ -119,7 +122,9 @@ class DIR_VAE:
                 posterior_alpha,
                 word_dists
             ) = self.model(X_contextual)
-
+            
+            if self.prior is not None:
+                prior_alpha =self.prior.cuda()
             # backward pass
             kl_loss, rl_loss = self._loss(
                 X_bow,
@@ -140,6 +145,48 @@ class DIR_VAE:
         train_loss /= samples_processed
 
         return samples_processed, train_loss
+    
+    def _validation(self, loader):
+        """Validation epoch."""
+        self.model.eval()
+        val_loss = 0
+        samples_processed = 0
+        for batch_samples in loader:
+            # batch_size x vocab_size
+            X_bow = batch_samples["X_bow"]
+            X_bow = X_bow.reshape(X_bow.shape[0], -1)
+            X_contextual = batch_samples["X_contextual"]
+
+            if self.USE_CUDA:
+                X_bow = X_bow.cuda()
+                X_contextual = X_contextual.cuda()
+
+            # forward pass
+            self.model.zero_grad()
+            (
+                prior_alpha,
+                posterior_alpha,
+                word_dists
+            ) = self.model(X_contextual)
+
+            # backward pass
+            kl_loss, rl_loss = self._loss(
+                X_bow,
+                prior_alpha,
+                posterior_alpha,
+                word_dists
+            )
+            loss = self.beta * kl_loss + rl_loss
+            loss = loss.sum()
+
+
+            # compute train loss
+            samples_processed += X_bow.size()[0]
+            val_loss += loss.item()
+
+        val_loss /= samples_processed
+
+        return samples_processed, val_loss
 
 
     def fit(
@@ -285,6 +332,10 @@ class DIR_VAE:
                 train_dataset, n_samples
             )
 
+    
+    def save(self,dir):
+        #Don't do nuthin
+        pass
 
     def get_doc_topic_distribution(self, dataset, n_samples=20):
         """
@@ -327,3 +378,23 @@ class DIR_VAE:
         print(doc_topic_distribution)
         topics = [np.where(p > 0.1) if len(np.where(p > 0.1)[0]) > 0 else np.where(p>=0.01) for p in doc_topic_distribution]
         return topics
+    
+    def get_posterior(self,dataset):
+        self.model.eval()
+
+        loader = DataLoader(
+            dataset,
+            batch_size=64,
+            shuffle=False
+        )
+        final_thetas = []
+        with torch.no_grad():
+            for batch_samples in loader:
+                # batch_size x vocab_size
+                X_contextual = batch_samples['X_contextual'].cuda()
+
+                # forward pass
+                self.model.zero_grad()
+                mu = self.model.get_posterior(X_contextual)
+                final_thetas.append(mu)
+        return torch.cat(final_thetas, dim=0)
