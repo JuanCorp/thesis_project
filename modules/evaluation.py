@@ -18,7 +18,7 @@ class Evaluation(object):
 
 
     def create_utility_objects(self,data):
-        self.tokenized_word_sentences = [word_tokenize(s) for s in data.values]
+        self.tokenized_word_sentences = [s.split(" ") for s in data.values]
         self.data = data
         self.id2word = corpora.Dictionary(self.tokenized_word_sentences)
 
@@ -212,22 +212,24 @@ class Evaluation(object):
         return stats
 
 
-    def plot_kl_divergence(self,teacher_posterior,student_posterior):
+    def plot_kl_divergence(self,val_loss):
         import seaborn as sns
         import matplotlib.pyplot as plt
+        import pandas as pd
 
         # Flatten matrices into 1D arrays
-        P_flat = teacher_posterior.flatten().cpu().numpy()
-        Q_flat = student_posterior.flatten().cpu().numpy()
-
         # Plot KDE distributions
+        print(val_loss)
+        data = pd.DataFrame(val_loss,columns=["Loss"])
+        data = data.reset_index().rename(columns={"index":"epoch"})
+        data["epoch"] +=1
+
         plt.figure(figsize=(7, 5))
-        sns.kdeplot(P_flat, fill=True, label="Teacher Density", color='blue')
-        sns.kdeplot(Q_flat, fill=True, label="Student Density", color='red')
+        sns.lineplot(data=data,x="epoch",y="Loss")
         plt.legend()
-        plt.title("Kernel Density Estimation of Matrix Values")
-        plt.xlabel("Value")
-        plt.ylabel("Density")
+        plt.title("validation Loss over Epochs")
+        plt.xlabel("Epoch")
+        plt.ylabel("KL Divergence")
         plt.savefig('KL_Divergence.png')
     
 

@@ -5,9 +5,8 @@ import nltk
 
 class TextEmbeddingGenerator(object):
 
-    def __init__(self,texts,model='paraphrase-multilingual-MiniLM-L12-v2'):
+    def __init__(self,model='paraphrase-multilingual-MiniLM-L12-v2'):
         self.model = model
-        self.texts = texts
         nltk.download('punkt')
 
     def _load_transformer(self):
@@ -17,9 +16,9 @@ class TextEmbeddingGenerator(object):
         del self.transformer
 
 
-    def _generate_text_embeddings(self):
+    def _generate_text_embeddings(self,texts):
         text_embeddings = list()
-        for text in self.texts.values:
+        for text in texts:
             tokenized_sentences = sent_tokenize(text)
             sentence_embeddings = self.transformer.encode(tokenized_sentences)
             averaged_sentences = sentence_embeddings.mean(axis=0)
@@ -28,9 +27,9 @@ class TextEmbeddingGenerator(object):
         return np.array(text_embeddings)
     
 
-    def calculate_embeddings(self):
+    def calculate_embeddings(self,texts):
         self._load_transformer()
-        embeddings = self._generate_text_embeddings()
+        embeddings = self._generate_text_embeddings(texts)
         return embeddings
     
 

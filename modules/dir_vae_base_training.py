@@ -51,6 +51,7 @@ class DIR_VAE:
         self.training_doc_topic_distributions = None
         self.beta = beta
         self.prior=prior
+        self.val_kl_losses = list()
 
         self.model = Dirichlet_VAE(
             bow_size,
@@ -109,7 +110,8 @@ class DIR_VAE:
         for batch_samples in loader:
             # batch_size x vocab_size
             X_bow = batch_samples["X_bow"]
-            X_bow = X_bow.reshape(X_bow.shape[0], -1)
+            if len(X_bow.shape) > 2:
+                X_bow = X_bow.reshape(X_bow.shape[0], -1)
             X_contextual = batch_samples["X_contextual"]
             if self.USE_CUDA:
                 X_bow = X_bow.cuda()
@@ -150,6 +152,7 @@ class DIR_VAE:
         """Validation epoch."""
         self.model.eval()
         val_loss = 0
+        epoch_kl_loss = 0
         samples_processed = 0
         for batch_samples in loader:
             # batch_size x vocab_size
@@ -176,6 +179,7 @@ class DIR_VAE:
                 posterior_alpha,
                 word_dists
             )
+            epoch_kl_loss += (kl_loss)
             loss = self.beta * kl_loss + rl_loss
             loss = loss.sum()
 
@@ -185,7 +189,8 @@ class DIR_VAE:
             val_loss += loss.item()
 
         val_loss /= samples_processed
-
+        epoch_kl_loss /= samples_processed        
+        self.val_kl_losses.append(epoch_kl_loss.mean().cpu().detach().numpy())
         return samples_processed, val_loss
 
 
@@ -375,7 +380,6 @@ class DIR_VAE:
     
     def predict(self,dataset):
         doc_topic_distribution = self.get_doc_topic_distribution(dataset)
-        print(doc_topic_distribution)
         topics = [np.where(p > 0.1) if len(np.where(p > 0.1)[0]) > 0 else np.where(p>=0.01) for p in doc_topic_distribution]
         return topics
     
@@ -398,3 +402,38 @@ class DIR_VAE:
                 mu = self.model.get_posterior(X_contextual)
                 final_thetas.append(mu)
         return torch.cat(final_thetas, dim=0)
+    
+
+    def get_word_topic_matrix(self,dataset):
+        self.model.eval()
+
+        loader = DataLoader(
+            dataset,
+            batch_size=64,
+            shuffle=False
+        )
+        final_thetas = []
+        with torch.no_grad():
+            for batch_samples in loader:
+                # batch_size x vocab_size
+                X_contextual = batch_samples['X_contextual'].cuda()
+
+                # forward pass
+                self.model.zero_grad()
+                _,_,mu = self.model(X_contextual)
+                final_thetas.append(mu)
+        return torch.cat(final_thetas, dim=0).cpu().numpy()
+    
+
+    
+    def get_top_tokens(self,idx2word):
+        topics = self.model.beta.detach().cpu().numpy()
+        print(topics.shape)
+        topics = topics.argsort(axis=1)[:, ::-1]
+        # top 10 words
+        topics = topics[:, :10]
+        print(topics.shape)
+        print(topics)
+        top_tokens = [[idx2word[i] for i in topic] for topic in topics]
+        print(len(top_tokens))
+        return top_tokens

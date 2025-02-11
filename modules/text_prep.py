@@ -8,6 +8,8 @@ import numpy as np
 
 class TextPreparation(object):
     #0.001, 0.95
+    3000 
+    60
     def __init__(self,text_series,cv_params={"min_df":0.005,"max_df":0.15},language="english"):
         self.text_series = text_series
         self.cv_params = cv_params
@@ -55,7 +57,7 @@ class TextPreparation(object):
         return text.loc[indexes_keep]
     
     
-    def prepare_text(self,pipeline=["clean","lemmatize","filter","keep"]):
+    def prepare_text(self,pipeline=["clean","filter","keep"]):
         functions = {"clean":self._clean_text,"filter":self._filter_words,"lemmatize":self._lemmatize_words,"keep":self._indexes_to_keep}
         text = self.text_series
         for step in pipeline:
