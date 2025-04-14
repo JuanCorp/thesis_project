@@ -35,10 +35,10 @@ class TextEmbeddingGenerator(object):
 
 
     def bert_embeddings_from_list(
-        self,texts, sbert_model_to_load, batch_size=200, max_seq_length=None
+        self,texts, batch_size=200, max_seq_length=None
     ):
 
-        model = SentenceTransformer(sbert_model_to_load)
+        model = SentenceTransformer(self.model)
 
         if max_seq_length is not None:
             model.max_seq_length = max_seq_length

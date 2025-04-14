@@ -32,3 +32,6 @@ class TopicModel(object):
         print("Predicting")
         self._select_topics(text_for_contextual)
         return self.topics
+    
+    def get_toptokens(self):
+        return self.model.get_topics()

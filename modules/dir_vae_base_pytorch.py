@@ -26,7 +26,8 @@ class Dirichlet_VAE(nn.Module):
                  input_size,
                  embedding_size,
                  topic_size,
-                 beta=2.0):
+                 beta=2.0,
+                 pretrained_encoder=None):
         super().__init__()
 
         self.input_size = input_size
@@ -44,11 +45,13 @@ class Dirichlet_VAE(nn.Module):
             nn.Dropout(p=0.2),
             nn.Linear(in_features=100, out_features=self.topic_size)
         )
+        if pretrained_encoder is not None:
+            self.encoder.load_state_dict(pretrained_encoder.state_dict())
         
         self.encoder_norm = nn.BatchNorm1d(num_features=self.topic_size, affine=False)
 
 
-        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.input_size))
+        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.input_size)) 
         nn.init.xavier_uniform_(self.beta)
 
         # decoder
@@ -69,7 +72,7 @@ class Dirichlet_VAE(nn.Module):
         theta = self.drop_theta(theta)
         word_dist = F.softmax(
                 self.decoder_norm(torch.matmul(theta, self.beta)), dim=1
-        )
+        )  # beta + plus teacher weight
         # word_dist: batch_size x input_size
         self.topic_word_matrix = word_dist
 
@@ -87,6 +90,7 @@ class Dirichlet_VAE(nn.Module):
         
 
         return alpha
+    
     
 
     def get_theta(self, x):

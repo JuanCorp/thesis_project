@@ -7,7 +7,7 @@ from collections import Counter
 import spacy
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-
+from thesis_project.modules.text_embeddings import TextEmbeddingGenerator
 
 class Evaluation(object):
 
@@ -212,25 +212,37 @@ class Evaluation(object):
         return stats
 
 
-    def plot_kl_divergence(self,val_loss):
+    def plot_losses(self,training_losses,filename):
         import seaborn as sns
         import matplotlib.pyplot as plt
         import pandas as pd
 
         # Flatten matrices into 1D arrays
         # Plot KDE distributions
-        print(val_loss)
-        data = pd.DataFrame(val_loss,columns=["Loss"])
+        data = pd.DataFrame(training_losses)
         data = data.reset_index().rename(columns={"index":"epoch"})
         data["epoch"] +=1
+        print(training_losses)
 
-        plt.figure(figsize=(7, 5))
-        sns.lineplot(data=data,x="epoch",y="Loss")
-        plt.legend()
-        plt.title("validation Loss over Epochs")
-        plt.xlabel("Epoch")
-        plt.ylabel("KL Divergence")
-        plt.savefig('KL_Divergence.png')
+        for loss in training_losses[0].keys():
+            plt.figure(figsize=(7, 5))
+            sns.lineplot(data=data,x="epoch",y=loss)
+            plt.legend()
+            plt.title(f"{loss} over Epochs")
+            plt.xlabel("Epoch")
+            plt.ylabel(loss)
+            plt.savefig(f'plots/{filename}_{loss}.png')
+
+    
+    def get_similarity_top_tokens(self,teacher_tokens,student_tokens):
+        teg = TextEmbeddingGenerator()
+        teacher_embeddings = [teg.bert_embeddings_from_list(topic) for topic in teacher_tokens]
+        student_embeddings = [teg.bert_embeddings_from_list(topic) for topic in student_tokens]
+        similarity = sum([cosine_similarity(teacher_embeddings[i],student_embeddings[i]).mean() 
+                          for i in range(len(teacher_embeddings))]) / len(teacher_embeddings)
+        return similarity
+
+
     
 
     

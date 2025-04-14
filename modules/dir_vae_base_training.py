@@ -11,6 +11,7 @@ from tqdm import tqdm
 from contextualized_topic_models.utils.early_stopping.early_stopping import (
     EarlyStopping,
 )
+from modules.evaluation import Evaluation
 from modules.dir_vae_base_pytorch import Dirichlet_VAE
 import datetime
 from torch.distributions import Dirichlet
@@ -30,7 +31,11 @@ class DIR_VAE:
         solver="adam",
         num_epochs=50,
         beta=1,
-        prior=None
+        prior=None,
+        training_texts=None,
+        id2token=None,
+        teacher_encoder=None,
+        teacher=None
     ):
 
         self.device = (
@@ -51,13 +56,17 @@ class DIR_VAE:
         self.training_doc_topic_distributions = None
         self.beta = beta
         self.prior=prior
+        self.training_texts=training_texts
+        self.id2token=id2token
         self.val_kl_losses = list()
 
         self.model = Dirichlet_VAE(
             bow_size,
             self.contextual_size,
-            n_components
+            n_components,
+            pretrained_encoder=teacher_encoder
         )
+        self.teacher = teacher
 
         self.optimizer = optim.Adam(
                 self.model.parameters(), lr=lr, betas=(self.momentum, 0.99)
@@ -75,6 +84,7 @@ class DIR_VAE:
 
         # learned topics
         self.best_components = None
+        self.teacher_encoder=teacher_encoder
 
         # Use cuda if available
         if torch.cuda.is_available():
@@ -83,6 +93,8 @@ class DIR_VAE:
             self.USE_CUDA = False
 
         self.model = self.model.to(self.device)
+
+        self.training_losses=[]
 
 
     def _loss(
@@ -100,12 +112,35 @@ class DIR_VAE:
         # loss = self.weights["beta"]*KL + RL
         return KL, RL
     
+    def _distill_loss(self,X_bert):
+        student_z = self.model.get_posterior(X_bert)
+        teacher_z = self.teacher.get_posterior(X_bert)
+        prior = Dirichlet(student_z)
+        posterior = Dirichlet(teacher_z)
+        distill_loss = torch.distributions.kl.kl_divergence(prior, posterior)
+        return distill_loss
+    
+    def _alignment_loss(self,X_bert):
+        student_z = self.model.get_theta(X_bert)
+        teacher_z = self.teacher.get_theta(X_bert)
+        cos = torch.nn.CosineSimilarity(-1)
+        alignment_loss = 1 - cos(student_z,teacher_z).mean()
+        return alignment_loss
+
+    
 
     def _train_epoch(self, loader):
         """Train epoch."""
         self.model.train()
         train_loss = 0
         samples_processed = 0
+        epoch_losses = {
+            "kl_loss":0,
+            "rl_loss":0,
+            "dt_loss":0,
+            "al_loss":0 
+        }
+        
 
         for batch_samples in loader:
             # batch_size x vocab_size
@@ -126,7 +161,7 @@ class DIR_VAE:
             ) = self.model(X_contextual)
             
             if self.prior is not None:
-                prior_alpha =self.prior.cuda()
+                prior_alpha =prior_alpha
             # backward pass
             kl_loss, rl_loss = self._loss(
                 X_bow,
@@ -136,7 +171,19 @@ class DIR_VAE:
             )
 
             loss = self.beta * kl_loss + rl_loss
+            epoch_losses["kl_loss"]+= kl_loss.sum()
+            epoch_losses["rl_loss"]+= rl_loss.sum()
+            if self.teacher is not None:
+                dis_loss = self._distill_loss(X_contextual)
+                loss += dis_loss
+                epoch_losses["dt_loss"] += dis_loss.sum()
             loss = loss.sum()
+            if self.teacher is not None:
+                align_loss = self._alignment_loss(X_contextual)
+                loss += align_loss
+                epoch_losses["al_loss"] += align_loss 
+
+
             loss.backward()
             self.optimizer.step()
 
@@ -145,10 +192,37 @@ class DIR_VAE:
             train_loss += loss.item()
 
         train_loss /= samples_processed
+        if self.teacher is not None:
+            epoch_losses["kl_loss"] /= samples_processed
+            epoch_losses["rl_loss"] /= samples_processed
+            epoch_losses["dt_loss"] /= samples_processed
+            epoch_losses["al_loss"] /= len(loader)
+
+
+            epoch_losses["kl_loss"] = epoch_losses["kl_loss"].cpu().detach().numpy().item()
+            epoch_losses["rl_loss"] = epoch_losses["rl_loss"].cpu().detach().numpy().item()
+            epoch_losses["dt_loss"] = epoch_losses["dt_loss"].cpu().detach().numpy().item()
+            epoch_losses["al_loss"]=  epoch_losses["al_loss"].cpu().detach().numpy().item()
+            epoch_losses["train_loss"] = train_loss
+            self.training_losses.append(epoch_losses)
 
         return samples_processed, train_loss
     
-    def _validation(self, loader):
+
+    def _student_teacher_topic_similarity(self,teacher_tm,student_tm):
+        cos = torch.nn.CosineSimilarity()
+        print(teacher_tm[-1].weight)
+        output = cos(teacher_tm[-1].weight, student_tm[-1].weight)
+        return output.mean()
+    
+    def _validation_coherence(self):
+        teacher_utils = Evaluation()
+        teacher_utils.create_utility_objects(self.training_texts)
+        teacher_top_tokens = self.get_top_tokens(self.id2token)
+        teacher_coherence = teacher_utils.get_coherence(teacher_top_tokens)
+        return teacher_coherence
+    
+    def _validation(self, loader,teacher_distribution=None):
         """Validation epoch."""
         self.model.eval()
         val_loss = 0
@@ -181,7 +255,13 @@ class DIR_VAE:
             )
             epoch_kl_loss += (kl_loss)
             loss = self.beta * kl_loss + rl_loss
+            if self.teacher is not None:
+                dis_loss = self._distill_loss(X_contextual)
+                loss += dis_loss
             loss = loss.sum()
+            if self.teacher is not None:
+                align_loss = self._alignment_loss(X_contextual)
+                loss += align_loss
 
 
             # compute train loss
@@ -189,9 +269,23 @@ class DIR_VAE:
             val_loss += loss.item()
 
         val_loss /= samples_processed
-        epoch_kl_loss /= samples_processed        
-        self.val_kl_losses.append(epoch_kl_loss.mean().cpu().detach().numpy())
-        return samples_processed, val_loss
+        epoch_kl_loss /= samples_processed     
+        epoch_loss = epoch_kl_loss.mean().cpu().detach().numpy() 
+        if self.training_texts is not None:
+            val_coherence = self._validation_coherence()
+        else:
+            val_coherence = 0
+        
+        if self.teacher_encoder is not None:
+            val_similarity = self._student_teacher_topic_similarity(self.teacher_encoder,self.model.encoder)
+        else:
+            val_similarity = 0 
+
+        final_loss = (epoch_loss - val_coherence - val_similarity) 
+        self.val_kl_losses.append(final_loss)
+        return samples_processed, final_loss
+    
+
 
 
     def fit(
@@ -204,6 +298,7 @@ class DIR_VAE:
         delta=0,
         n_samples=20,
         do_train_predictions=True,
+        teacher_distribution=None
     ):
         """
         Train the CTM model.
@@ -282,7 +377,7 @@ class DIR_VAE:
                 )
                 # train epoch
                 s = datetime.datetime.now()
-                val_samples_processed, val_loss = self._validation(validation_loader)
+                val_samples_processed, val_loss = self._validation(validation_loader,teacher_distribution)
                 e = datetime.datetime.now()
 
                 # report

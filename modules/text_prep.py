@@ -14,7 +14,7 @@ class TextPreparation(object):
         self.text_series = text_series
         self.cv_params = cv_params
         self.language=language
-        language_model_name_dict = {"english":"en_core_web_sm","spanish":"es_core_news_sm"}
+        language_model_name_dict = {"english":"en_core_web_sm","spanish":"es_core_news_sm","german":"de_core_news_sm"}
         self.model = spacy.load(language_model_name_dict[self.language], disable = ['parser'])
 
     def _get_stopwords(self):
@@ -26,11 +26,11 @@ class TextPreparation(object):
     def _clean_text(self,text):
         self._get_stopwords()
         lower_text = text.str.lower()
-        no_accents = lower_text.apply(unidecode)
+        no_accents = lower_text#.apply(unidecode)
         #alpha_text =  no_accents.str.replace(r"^[\.a-zA-Z0-9,!? ]*$", "")
         #nostops = alpha_text.apply(lambda x: " ".join([word for word in x.split() if word not in self.stopwords and (len(word) > 2 )]))#or word == "." or word == " .")]))
-        alpha_text =  no_accents.str.replace(r"(@\[a-z]+)|([^a-z \t])|(\w+:\/\/\S+)|^rt|http.+?", "")
-        nostops = alpha_text.apply(lambda x: " ".join([word for word in x.split() if word not in self.stopwords and len(word) > 2]))
+        #alpha_text =  no_accents.str.replace(r"(@\[a-z]+)|([^a-z \t])|(\w+:\/\/\S+)|^rt|http.+?", "")
+        nostops = no_accents.apply(lambda x: " ".join([word for word in x.split() if word not in self.stopwords and len(word) > 2]))
         return nostops
     
     def _lemmatize_words(self,text):
@@ -40,13 +40,13 @@ class TextPreparation(object):
             return lemmatized
         return text.apply(_lemmatize_doc)
     
-    def _filter_words(self,text):
+    def _filter_words(self,text,max_features=False):
         cv = CountVectorizer(min_df=self.cv_params["min_df"],max_df=self.cv_params["max_df"])
-        #cv = CountVectorizer(max_features=10000)
         cv.fit(text)
-
+        print(cv.vocabulary_)
         filtered_text = text.apply(lambda x: " ".join([word for word in x.split() if word in cv.vocabulary_]))
-        filled_text = filtered_text.apply(lambda x: filtered_text.values[0] if x == "" else x)
+        print(filtered_text)
+        filled_text = filtered_text.apply(lambda x: text.values[0] if x == "" else x)
         self.vocab_size=len(cv.vocabulary_)
         return filled_text
     
