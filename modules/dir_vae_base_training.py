@@ -30,7 +30,7 @@ class DIR_VAE:
         momentum=0.99,
         solver="adam",
         num_epochs=50,
-        beta=1,
+        beta={"rl":1,"kl":1,"dl":1,"al":1},
         prior=None,
         training_texts=None,
         id2token=None,
@@ -170,18 +170,24 @@ class DIR_VAE:
                 word_dists
             )
 
-            loss = self.beta * kl_loss + rl_loss
+            rl_loss = torch.log(rl_loss)
             epoch_losses["kl_loss"]+= kl_loss.sum()
             epoch_losses["rl_loss"]+= rl_loss.sum()
             if self.teacher is not None:
                 dis_loss = self._distill_loss(X_contextual)
-                loss += dis_loss
                 epoch_losses["dt_loss"] += dis_loss.sum()
-            loss = loss.sum()
             if self.teacher is not None:
                 align_loss = self._alignment_loss(X_contextual)
-                loss += align_loss
                 epoch_losses["al_loss"] += align_loss 
+            
+            if self.teacher is not None:
+                loss = kl_loss * self.beta["kl"] + rl_loss * self.beta["rl"] + self.beta["dl"] * dis_loss
+                loss = loss.sum()
+                loss +=  self.beta["al"] * align_loss 
+            else:
+                loss = kl_loss * self.beta["kl"] + rl_loss * self.beta["rl"] 
+                loss = loss.sum()
+
 
 
             loss.backward()
@@ -253,16 +259,19 @@ class DIR_VAE:
                 posterior_alpha,
                 word_dists
             )
-            epoch_kl_loss += (kl_loss)
-            loss = self.beta * kl_loss + rl_loss
+            rl_loss = torch.log(rl_loss)
             if self.teacher is not None:
                 dis_loss = self._distill_loss(X_contextual)
-                loss += dis_loss
-            loss = loss.sum()
             if self.teacher is not None:
                 align_loss = self._alignment_loss(X_contextual)
-                loss += align_loss
-
+            
+            if self.teacher is not None:
+                loss = kl_loss * self.beta["kl"] + rl_loss * self.beta["rl"] + self.beta["dl"] * dis_loss
+                loss = loss.sum()
+                loss +=  self.beta["al"] * align_loss 
+            else:
+                loss = kl_loss * self.beta["kl"] + rl_loss * self.beta["rl"] 
+                loss = loss.sum()
 
             # compute train loss
             samples_processed += X_bow.size()[0]
@@ -270,7 +279,7 @@ class DIR_VAE:
 
         val_loss /= samples_processed
         epoch_kl_loss /= samples_processed     
-        epoch_loss = epoch_kl_loss.mean().cpu().detach().numpy() 
+        epoch_loss = val_loss
         if self.training_texts is not None:
             val_coherence = self._validation_coherence()
         else:

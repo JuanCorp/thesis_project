@@ -28,18 +28,16 @@ CONSTANTS = {
 
 files = [
     "news_docs_id_2018",
-    "news_docs_ht_2018",
-    "news_docs_kk_2018",
-    "news_docs_es_2015",
-    "news_docs_sr_2018",
-    "news_docs_ur_2018",
 
 ]
 
-vocab_sizes = {
-    "sm":{"min_df":0.1,"max_df":0.5},
-    "md":{"min_df":0.01,"max_df":0.5},
-    "lg":{"min_df":0.001,"max_df":0.5}
+
+betas = {
+    "balanced":{"rl":1,"kl":1,"dl":1,"al":1},
+    "kl_focused":{"rl":0.3,"kl":1,"dl":0.3,"al":0.3},
+    "dl_focused":{"rl":0.3,"kl":0.3,"dl":1,"al":0.3},
+    "al_focused": {"rl":0.3,"kl":0.3,"dl":0.3,"al":1},
+    "rl_focused":{"rl":1,"kl":0.3,"dl":0.3,"al":0.3},
 }
 
 def run_experiment():
@@ -82,14 +80,14 @@ def run_experiment():
     end = time.time()
     training_time = end-start
     for file in files:
-        for vocab_size,params in vocab_sizes.items():
+        for vocab_size,params in betas.items():
             save_file_name = f"TS_{file}_{vocab_size}"
             dr = DataReader(filename=f"{file}.csv")
             es_text_data = dr.obtain_text_data()
             print(es_text_data.shape)
 
             print("Preparing Text")
-            es_tp = TextPreparation(es_text_data.en,language='english',cv_params=params)
+            es_tp = TextPreparation(es_text_data.en,language='english',cv_params={"min_df":0.01,"max_df":0.5})
             prepped_text_es = es_tp.prepare_text()
             print(prepped_text_es.shape)
             teg = TextEmbeddingGenerator(prepped_text_es)
@@ -115,7 +113,8 @@ def run_experiment():
             test_dataset_sp = qt_sp.transform(text_for_contextual=test_contextual_sp
                                     , text_for_bow=test_bow_prepped_sp)
             student_model =  DIR_VAE(len(qt_sp.vocab),384,20,num_epochs=50,prior=posterior,
-                                    training_texts=train_bow_prepped_sp,id2token=qt_sp.id2token,teacher=model.model) 
+                                    training_texts=train_bow_prepped_sp,id2token=qt_sp.id2token,teacher=model.model,
+                                    beta=params) 
             student_model.fit(training_dataset_sp,val_dataset_sp)
             topics = student_model.predict(test_dataset_sp)
             teacher_posterior = model.get_posterior(test_dataset_sp)
