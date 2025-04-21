@@ -170,7 +170,6 @@ class DIR_VAE:
                 word_dists
             )
 
-            rl_loss = torch.log(rl_loss)
             epoch_losses["kl_loss"]+= kl_loss.sum()
             epoch_losses["rl_loss"]+= rl_loss.sum()
             if self.teacher is not None:
