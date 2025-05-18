@@ -4,10 +4,10 @@ from nltk.probability import FreqDist
 from nltk.tokenize import word_tokenize
 import numpy as np
 from collections import Counter
-import spacy
+#import spacy
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-from thesis_project.modules.text_embeddings import TextEmbeddingGenerator
+from ..modules.text_embeddings import TextEmbeddingGenerator
 
 class Evaluation(object):
 
@@ -240,7 +240,14 @@ class Evaluation(object):
         student_embeddings = [teg.bert_embeddings_from_list(topic) for topic in student_tokens]
         similarity = sum([cosine_similarity(teacher_embeddings[i],student_embeddings[i]).mean() 
                           for i in range(len(teacher_embeddings))]) / len(teacher_embeddings)
-        return similarity
+        all_similarities = list()
+        for i in range(len(teacher_embeddings)):
+            teacher_similarities = list()
+            for j in range(len(teacher_embeddings)):
+                similarity = cosine_similarity(teacher_embeddings[i],student_embeddings[j]).mean()
+                teacher_similarities.append(similarity)
+            all_similarities.append(teacher_similarities)
+        return similarity,all_similarities
 
 
     

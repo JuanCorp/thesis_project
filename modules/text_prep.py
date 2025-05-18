@@ -2,7 +2,6 @@ from nltk.corpus import stopwords
 import nltk
 import re
 from sklearn.feature_extraction.text import CountVectorizer
-import spacy
 from unidecode import unidecode
 import numpy as np
 
@@ -15,7 +14,7 @@ class TextPreparation(object):
         self.cv_params = cv_params
         self.language=language
         language_model_name_dict = {"english":"en_core_web_sm","spanish":"es_core_news_sm","german":"de_core_news_sm"}
-        self.model = spacy.load(language_model_name_dict[self.language], disable = ['parser'])
+        #self.model = spacy.load(language_model_name_dict[self.language], disable = ['parser'])
 
     def _get_stopwords(self):
         nltk.download("stopwords")
