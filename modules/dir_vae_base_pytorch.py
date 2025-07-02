@@ -51,7 +51,7 @@ class Dirichlet_VAE(nn.Module):
         self.encoder_norm = nn.BatchNorm1d(num_features=self.topic_size, affine=False)
 
 
-        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.input_size)) 
+        self.beta = nn.Parameter(torch.Tensor(self.topic_size,self.input_size))
         nn.init.xavier_uniform_(self.beta)
 
         # decoder
@@ -90,7 +90,6 @@ class Dirichlet_VAE(nn.Module):
         
 
         return alpha
-    
     
 
     def get_theta(self, x):

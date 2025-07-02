@@ -7,12 +7,11 @@ from collections import Counter
 #import spacy
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-from ..modules.text_embeddings import TextEmbeddingGenerator
+from modules.text_embeddings import TextEmbeddingGenerator
 
 class Evaluation(object):
 
-    def __init__(self,coherence_mode="c_npmi",n_topics=20,topk=10):
-        self.coherence_mode = coherence_mode
+    def __init__(self,n_topics=20,topk=10):
         self.n_topics = n_topics
         self.topk = topk
 
@@ -21,7 +20,6 @@ class Evaluation(object):
         self.tokenized_word_sentences = [s.split(" ") for s in data.values]
         self.data = data
         self.id2word = corpora.Dictionary(self.tokenized_word_sentences)
-
     
 
     def get_top_topic_tokens(self,topics,method="freq"):
@@ -80,8 +78,8 @@ class Evaluation(object):
         return diversity
     
 
-    def get_coherence(self,top_tokens):
-        cm = CoherenceModel(topics=top_tokens,texts = self.tokenized_word_sentences, dictionary=self.id2word, coherence=self.coherence_mode,processes=1,topn=10)
+    def get_coherence(self,top_tokens,coherence_mode="c_npmi"):
+        cm = CoherenceModel(topics=top_tokens,texts = self.tokenized_word_sentences, dictionary=self.id2word, coherence=coherence_mode,processes=1,topn=10)
         coherence = cm.get_coherence()
         return coherence
     
@@ -247,7 +245,7 @@ class Evaluation(object):
                 similarity = cosine_similarity(teacher_embeddings[i],student_embeddings[j]).mean()
                 teacher_similarities.append(similarity)
             all_similarities.append(teacher_similarities)
-        return similarity,all_similarities
+        return similarity
 
 
     

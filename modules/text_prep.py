@@ -9,10 +9,11 @@ class TextPreparation(object):
     #0.001, 0.95
     3000 
     60
-    def __init__(self,text_series,cv_params={"min_df":0.005,"max_df":0.15},language="english"):
+    def __init__(self,text_series,cv_params={"min_df":0.005,"max_df":0.15},language="english",vocabulary=None):
         self.text_series = text_series
         self.cv_params = cv_params
         self.language=language
+        self.vocabulary = vocabulary
         language_model_name_dict = {"english":"en_core_web_sm","spanish":"es_core_news_sm","german":"de_core_news_sm"}
         #self.model = spacy.load(language_model_name_dict[self.language], disable = ['parser'])
 
@@ -23,6 +24,7 @@ class TextPreparation(object):
 
     
     def _clean_text(self,text):
+        print(text)
         self._get_stopwords()
         lower_text = text.str.lower()
         no_accents = lower_text#.apply(unidecode)
@@ -42,11 +44,12 @@ class TextPreparation(object):
     def _filter_words(self,text,max_features=False):
         cv = CountVectorizer(min_df=self.cv_params["min_df"],max_df=self.cv_params["max_df"])
         cv.fit(text)
-        print(cv.vocabulary_)
-        filtered_text = text.apply(lambda x: " ".join([word for word in x.split() if word in cv.vocabulary_]))
+        if self.vocabulary is None:
+            self.vocabulary = cv.vocabulary_
+        filtered_text = text.apply(lambda x: " ".join([word for word in x.split() if word in self.vocabulary]))
         print(filtered_text)
         filled_text = filtered_text.apply(lambda x: text.values[0] if x == "" else x)
-        self.vocab_size=len(cv.vocabulary_)
+        self.vocab_size=len(self.vocabulary)
         return filled_text
     
     

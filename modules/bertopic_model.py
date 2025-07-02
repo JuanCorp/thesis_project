@@ -1,5 +1,6 @@
 from bertopic import BERTopic
 import numpy as np
+from sklearn.cluster import KMeans
 
 class TopicModel(object):
 
@@ -12,7 +13,8 @@ class TopicModel(object):
 
 
     def get_topics(self,text_for_bow=list()):
-        self.model = BERTopic(min_topic_size=2,nr_topics=self.n_topics,language="multilingual")
+        kmeans = KMeans(n_clusters=self.n_topics)
+        self.model = BERTopic(hdbscan_model=kmeans,language="multilingual",)
         self.model.fit(text_for_bow)
         return self.model
     
