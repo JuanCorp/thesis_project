@@ -3,7 +3,7 @@ from modules.data_saver import DataSaver
 from modules.text_prep import TextPreparation
 from modules.text_embeddings import TextEmbeddingGenerator
 from modules.bow_embeddings import generate_bow
-from modules.evaluation_copy import Evaluation
+from modules.evaluation import Evaluation
 from modules.student_ctm_dataset import CTMDataset
 from modules.ctm_base import CTM
 import time
@@ -16,7 +16,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import numpy as np
 from contextualized_topic_models.utils.data_preparation import TopicModelDataPreparation
-from modules.dir_vae_base_training_copy import DIR_VAE
+from modules.dir_vae_base_training import DIR_VAE
 
 CONSTANTS = {
     "dataset":"news",

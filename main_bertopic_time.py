@@ -1,7 +1,7 @@
 from modules.data_reader import DataReader
 from modules.data_saver import DataSaver
 from modules.text_prep import TextPreparation
-from modules.evaluation_copy import Evaluation
+from modules.evaluation import Evaluation
 from modules.bertopic_model import TopicModel
 from nltk.tokenize import word_tokenize
 import time
